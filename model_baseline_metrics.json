@@ -1,0 +1,13 @@
+{
+  "model": "Logistic Regression (class_weight=balanced)",
+  "sample_size": 200000,
+  "train_size": 160000,
+  "test_size": 40000,
+  "precision_fraud": 0.0453,
+  "recall_fraud": 0.8231,
+  "f1_fraud": 0.0858,
+  "true_positives": 363,
+  "false_positives": 7658,
+  "false_negatives": 78,
+  "true_negatives": 31901
+}
