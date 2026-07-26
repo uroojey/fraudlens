@@ -28,3 +28,42 @@ The model catches 82.3% of actual fraud cases (strong recall), but only 4.5% of 
 **Artifacts saved:**
 - `model_baseline_metrics.json` — exact metrics in machine-readable form
 - `screenshots/day4_confusion_matrix.png` — visual confusion matrix
+
+---
+
+## Day 5 — Model Comparison & Final Selection
+
+**Random Forest — first attempt (`class_weight='balanced'`):**
+Catastrophic recall failure — only 5 of 441 fraud cases caught (recall ≈ 1.1%). Root cause: Random Forest's bootstrap sampling means each individual tree sees very few fraud examples from the already-rare fraud class, and a single global class weight doesn't compensate for this per-tree dilution.
+
+**Random Forest — second attempt (`class_weight='balanced_subsample'`):**
+Improved slightly (13/441 caught, recall ≈ 2.9%) — better, but still far behind Logistic Regression. `balanced_subsample` recalculates weights per tree's own bootstrap sample, which helped marginally but didn't solve the core issue.
+
+**Random Forest — threshold-tuned:**
+Instead of using the default 0.5 probability cutoff, we tuned the decision threshold using a precision-recall curve, selecting the threshold that achieves ~80% recall (comparable to Logistic Regression) to allow a fair, apples-to-apples comparison.
+
+**Final comparison table (all models at comparable ~80% recall where applicable):**
+
+| Model | Precision (Fraud) | Recall (Fraud) | F1 (Fraud) |
+|---|---|---|---|
+| Logistic Regression | 0.0453 | 0.8231 | 0.0858 |
+| Random Forest (default 0.5 threshold) | 0.2174 | 0.0113 | 0.0216 |
+| Random Forest (tuned threshold) | 0.0337 | 0.8027 | 0.0647 |
+
+**Decision: Logistic Regression selected as the final model.** Even after fairly tuning Random Forest's threshold to match recall, Logistic Regression still achieves better precision and a better F1 score (0.0858 vs. 0.0647) at a comparable recall level. The simpler model wins on this dataset — a legitimate and worth-documenting finding, not a fallback choice.
+
+**Isolation Forest (secondary, unsupervised check):**
+Trained on `X_train_scaled` only, without fraud labels, using `contamination=0.011` to match the known fraud rate. Used purely as a sanity-check comparison against the supervised model's flags — not used for the app's primary predictions.
+
+**Feature Importance (Logistic Regression coefficients):**
+Top signal: `prev_address_months_count_is_missing` (the missing-value flag created during Day 3 cleaning) is the single strongest predictor of fraud — a case where a "was this value missing" flag turned out to be more informative than the raw value itself. `device_os_windows` also strongly increases fraud likelihood. Protective factors (decrease fraud likelihood) include having other cards, a valid home phone, and several housing/employment status categories. This coherent, explainable pattern directly powers Day 7's plain-language explanation feature.
+
+**Artifacts saved and verified (Day 5):**
+- `models/fraud_model.pkl` — final Logistic Regression model
+- `models/scaler.pkl` — fitted StandardScaler (fit on training data only)
+- `models/feature_columns.pkl` — ordered list of 52 expected feature columns
+- `models/feature_importance.csv` — full feature importance table
+- `screenshots/day5_confusion_matrix_rf.png`, `day5_confusion_matrix_rf_tuned.png`, `day5_feature_importance.png`
+- **Reload test passed** — reloaded artifacts produce identical predictions to the original in-memory model, confirming no save/load mismatch
+
+**Ready for Day 6:** these three saved artifacts are exactly what the Streamlit app will load to make live predictions.
