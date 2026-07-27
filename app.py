@@ -22,6 +22,27 @@ st.set_page_config(
 
 MODELS_DIR = "models"
 
+# ---------- Light Custom Styling ----------
+st.markdown(
+    """
+    <style>
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    div[data-testid="stMetric"] {
+        background-color: rgba(2, 195, 154, 0.08);
+        border: 1px solid rgba(2, 195, 154, 0.25);
+        padding: 1rem 1rem 0.5rem 1rem;
+        border-radius: 0.6rem;
+    }
+    .fraudlens-empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #8FA8B2;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ---------- Load Model Artifacts (cached, runs once) ----------
 @st.cache_resource
@@ -31,14 +52,16 @@ def load_model_artifacts():
     columns_path = os.path.join(MODELS_DIR, "feature_columns.pkl")
     importance_path = os.path.join(MODELS_DIR, "feature_importance.csv")
 
-    missing = [p for p in [model_path, scaler_path, columns_path] if not os.path.exists(p)]
+    missing = [p for p in [model_path, scaler_path,
+                           columns_path] if not os.path.exists(p)]
     if missing:
         return None, None, None, None, missing
 
     model = joblib.load(model_path)
     scaler = joblib.load(scaler_path)
     feature_columns = joblib.load(columns_path)
-    feature_importance = load_feature_importance(importance_path) if os.path.exists(importance_path) else None
+    feature_importance = load_feature_importance(
+        importance_path) if os.path.exists(importance_path) else None
 
     return model, scaler, feature_columns, feature_importance, []
 
@@ -54,68 +77,98 @@ with st.sidebar:
     )
     st.markdown("Upload a CSV of transactions to screen for fraud.")
     st.markdown("---")
+    st.markdown("**How it works:**")
+    st.markdown(
+        "1. Upload a CSV\n"
+        "2. Transactions are cleaned and scored\n"
+        "3. Review flagged transactions and why they were flagged"
+    )
+    st.markdown("---")
     st.markdown("🔗 [GitHub](https://github.com/uroojey/fraudlens)")
     st.markdown("🔗 [LinkedIn](https://linkedin.com/in/uroojey)")
 
 # ---------- Header ----------
 st.title("🔍 FraudLens")
-st.markdown("Upload a CSV of transactions to screen for fraud.")
+st.caption("Upload a CSV of transactions to screen for fraud in seconds.")
 
 if missing_files:
     st.error(
-        "Model files not found — this app cannot make predictions right now. "
-        f"Missing: {', '.join(missing_files)}"
+        "⚠️ Model files not found — this app cannot make predictions right now. "
+        f"Missing: {', '.join(missing_files)}. Please contact the repo owner."
     )
     st.stop()
 
 # ---------- File Upload ----------
-uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
+uploaded_file = st.file_uploader(
+    "Upload a CSV file",
+    type=["csv"],
+    help="File must include the standard transaction columns. See sample_data/ in the repo for an example."
+)
 
 if uploaded_file is not None:
     try:
         df_raw = pd.read_csv(uploaded_file)
     except Exception:
-        st.error("Couldn't read this file — please make sure it's a valid CSV.")
+        st.error("⚠️ Couldn't read this file — please make sure it's a valid CSV.")
+        st.stop()
+
+    if df_raw.empty:
+        st.warning(
+            "This file appears to be empty. Please upload a CSV with transaction rows.")
         st.stop()
 
     try:
-        with st.spinner("Processing transactions..."):
+        with st.spinner("🔎 Screening transactions for fraud patterns..."):
             df_processed = preprocess_transactions(df_raw, feature_columns)
             X_scaled = scaler.transform(df_processed)
             predictions = model.predict(X_scaled)
             probabilities = model.predict_proba(X_scaled)[:, 1]
     except PreprocessingError as e:
-        st.error(str(e))
+        st.error(f"⚠️ {str(e)}")
         st.stop()
-    except Exception as e:
-        st.error("Something went wrong scoring this file — please check the file format and try again.")
+    except Exception:
+        st.error(
+            "⚠️ Something went wrong scoring this file. Please double-check the file format "
+            "matches the expected columns, then try again."
+        )
         st.stop()
 
     # Build results dataframe (original columns + predictions)
     results = df_raw.copy()
-    results['fraud_prediction'] = np.where(predictions == 1, 'Fraud', 'Not Fraud')
+    results['fraud_prediction'] = np.where(
+        predictions == 1, 'Fraud', 'Not Fraud')
     results['fraud_probability'] = (probabilities * 100).round(2)
 
     n_flagged = int((predictions == 1).sum())
     n_total = len(results)
+    flag_rate = (n_flagged / n_total * 100) if n_total else 0
 
-    # ---------- Summary Metric ----------
+    st.success(f"✅ Screened {n_total:,} transactions successfully.")
+
+    # ---------- Summary Metrics ----------
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Transactions", f"{n_total:,}")
     col2.metric("Flagged as Fraud", f"{n_flagged:,}")
-    col3.metric("Flag Rate", f"{(n_flagged / n_total * 100) if n_total else 0:.2f}%")
+    col3.metric("Flag Rate", f"{flag_rate:.2f}%")
+
+    st.markdown("")  # small spacer
 
     # ---------- Distribution Chart ----------
     st.subheader("📊 Distribution: Normal vs. Fraud")
-    fig, ax = plt.subplots(figsize=(6, 3))
+    fig, ax = plt.subplots(figsize=(7, 2.8))
     counts = [n_total - n_flagged, n_flagged]
     labels = ['Not Fraud', 'Fraud']
     colors = ['#02C39A', '#F96167']
-    ax.barh(labels, counts, color=colors)
+    bars = ax.barh(labels, counts, color=colors, height=0.55)
     ax.set_xlabel('Number of Transactions')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     for i, v in enumerate(counts):
-        ax.text(v, i, f' {v:,}', va='center')
+        ax.text(v + max(counts) * 0.01, i, f'{v:,}', va='center', fontsize=10)
+    plt.tight_layout()
     st.pyplot(fig)
+
+    st.markdown("---")
 
     # ---------- Top Suspicious Transactions ----------
     st.subheader("🔺 Top Suspicious Transactions")
@@ -127,7 +180,8 @@ if uploaded_file is not None:
         if feature_importance is not None:
             explanations = []
             for idx, row in top_suspicious.iterrows():
-                explanations.append(explain_transaction(df_processed.loc[idx], feature_importance))
+                explanations.append(explain_transaction(
+                    df_processed.loc[idx], feature_importance))
             top_suspicious['why_flagged'] = explanations
         else:
             top_suspicious['why_flagged'] = "Flagged by the model's overall risk score."
@@ -135,22 +189,42 @@ if uploaded_file is not None:
         display_cols = ['fraud_probability', 'why_flagged'] + [
             c for c in df_raw.columns if c in ['income', 'customer_age', 'payment_type', 'employment_status']
         ]
-        st.dataframe(top_suspicious[display_cols], use_container_width=True)
+        st.dataframe(
+            top_suspicious[display_cols].rename(columns={
+                'fraud_probability': 'Fraud Probability (%)',
+                'why_flagged': 'Why Flagged',
+                'income': 'Income',
+                'customer_age': 'Age',
+                'payment_type': 'Payment Type',
+                'employment_status': 'Employment Status',
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
     else:
-        st.info("No transactions were flagged as fraud in this batch.")
+        st.markdown(
+            "<div class='fraudlens-empty-state'>✅ No transactions were flagged as fraud in this batch.</div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
 
     # ---------- Full Results Table ----------
     st.subheader("📋 Full Results")
-    st.dataframe(results, use_container_width=True)
+    st.caption(
+        f"All {n_total:,} screened transactions, sortable by any column.")
+    st.dataframe(results, use_container_width=True, hide_index=True)
 
 else:
-    st.info("👆 Upload a CSV file to get started. Need a sample? Check the `sample_data/` folder in the repo.")
+    st.markdown(
+        """
+        <div class='fraudlens-empty-state'>
+        <h3>👋 Ready to screen your transactions</h3>
+        <p>Upload a CSV file above to get started.<br>
+        Need a sample? Check the <code>sample_data/</code> folder in the repo.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-# ---------- Footer ----------
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: gray; font-size: 0.85em;'>"
-    "Built with Claude as part of the AB Talks 60-Day Claude AI Challenge."
-    "</div>",
-    unsafe_allow_html=True
-)
+# ---------- End of App ----------
