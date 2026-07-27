@@ -12,21 +12,24 @@ import json
 import os
 
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-IMPUTATION_PATH = os.path.join(_CURRENT_DIR, '..', 'models', 'imputation_values.json')
+IMPUTATION_PATH = os.path.join(
+    _CURRENT_DIR, '..', 'models', 'imputation_values.json')
 
-NUM_COLS_MEDIAN = ['current_address_months_count', 'bank_months_count', 'session_length_in_minutes']
+NUM_COLS_MEDIAN = ['current_address_months_count',
+                   'bank_months_count', 'session_length_in_minutes']
 NUM_COLS_ZERO = ['prev_address_months_count']
 CAT_COLS_FLAG = ['device_distinct_emails_8w']
-CATEGORICAL_COLS = ['payment_type', 'employment_status', 'housing_status', 'source', 'device_os', 'device_distinct_emails_8w']
+CATEGORICAL_COLS = ['payment_type', 'employment_status',
+                    'housing_status', 'source', 'device_os', 'device_distinct_emails_8w']
 DROP_COLS = ['device_fraud_count']
 
-REQUIRED_RAW_COLUMNS = list(set(
+REQUIRED_RAW_COLUMNS = sorted(set(
     NUM_COLS_MEDIAN + NUM_COLS_ZERO + CAT_COLS_FLAG + CATEGORICAL_COLS
 ))
 
 
 class PreprocessingError(Exception):
-    """Raised when an uploaded CSV can't be processed (missing columns, etc.)."""
+    """Raised when an uploaded CSV can't be processed (missing columns, bad data, etc.)."""
     pass
 
 
@@ -61,6 +64,37 @@ def preprocess_transactions(df_raw: pd.DataFrame, feature_columns: list) -> pd.D
     df = df_raw.copy()
     imputation_values = _load_imputation_values()
 
+    # Coerce expected-numeric columns to numeric first. This guards against
+    # CSVs where a column got read as text (e.g., due to a stray blank cell
+    # or Excel export quirk) — without this, the -1 missing-value check below
+    # would silently fail to match, letting bad data flow downstream into a
+    # confusing, generic error at prediction time instead of a clear one here.
+    numeric_expected_cols = NUM_COLS_MEDIAN + NUM_COLS_ZERO
+    bad_numeric_cols = []
+    for col in numeric_expected_cols:
+        coerced = pd.to_numeric(df[col], errors='coerce')
+        # If coercion introduced new NaNs beyond what were already NaN, the
+        # column had genuinely non-numeric values we can't safely interpret.
+        newly_invalid = coerced.isna() & df[col].notna()
+        if newly_invalid.any():
+            bad_numeric_cols.append(col)
+        df[col] = coerced
+
+    if bad_numeric_cols:
+        raise PreprocessingError(
+            f"Column(s) {', '.join(bad_numeric_cols)} contain non-numeric values that "
+            f"couldn't be interpreted — please check for typos or stray text in these columns."
+        )
+
+    # Any row where a required numeric column ended up NaN (genuinely missing,
+    # not the -1 placeholder) can't be safely imputed by our -1-based logic —
+    # fail clearly rather than silently propagating NaN into the model.
+    if df[numeric_expected_cols].isna().any().any():
+        raise PreprocessingError(
+            "Some rows have missing (blank) values in numeric columns that aren't "
+            "using the expected -1 placeholder — please check your file for blank cells."
+        )
+
     # Step 1: Handle missing values (-1 placeholders)
     for col in NUM_COLS_MEDIAN:
         df[f'{col}_is_missing'] = (df[col] == -1).astype(int)
@@ -74,7 +108,8 @@ def preprocess_transactions(df_raw: pd.DataFrame, feature_columns: list) -> pd.D
         df[col] = df[col].astype(str).replace(['-1.0', '-1'], 'MISSING')
 
     # Step 2: One-hot encode categoricals
-    df = pd.get_dummies(df, columns=CATEGORICAL_COLS, drop_first=True, dtype=int)
+    df = pd.get_dummies(df, columns=CATEGORICAL_COLS,
+                        drop_first=True, dtype=int)
 
     # Step 3: Drop redundant columns
     for col in DROP_COLS:
@@ -83,7 +118,9 @@ def preprocess_transactions(df_raw: pd.DataFrame, feature_columns: list) -> pd.D
 
     # Step 4: Align to the exact feature set the model was trained on.
     # Any dummy column not present in this batch (e.g., a category that
-    # didn't appear in the uploaded file) is filled with 0.
+    # didn't appear in the uploaded file) is filled with 0. Any unexpected
+    # category value not seen during training is silently dropped here —
+    # a documented, acceptable simplification for this project's scope.
     df = df.reindex(columns=feature_columns, fill_value=0)
 
     return df

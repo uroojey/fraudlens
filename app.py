@@ -21,6 +21,7 @@ st.set_page_config(
 )
 
 MODELS_DIR = "models"
+MAX_DISPLAY_ROWS = 5000  # guard against extremely large files slowing down the browser
 
 # ---------- Light Custom Styling ----------
 st.markdown(
@@ -66,6 +67,26 @@ def load_model_artifacts():
     return model, scaler, feature_columns, feature_importance, []
 
 
+def read_uploaded_csv(uploaded_file):
+    """Read an uploaded CSV with a fallback encoding chain, raising a friendly error on failure."""
+    for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+        try:
+            uploaded_file.seek(0)
+            return pd.read_csv(uploaded_file, encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+        except pd.errors.EmptyDataError:
+            raise PreprocessingError("The uploaded file has no data.")
+        except pd.errors.ParserError:
+            raise PreprocessingError(
+                "This file couldn't be parsed as a CSV — please check it's correctly formatted "
+                "(comma-separated, no corrupted rows)."
+            )
+    raise PreprocessingError(
+        "Couldn't read this file's text encoding. Please save it as UTF-8 CSV and try again."
+    )
+
+
 model, scaler, feature_columns, feature_importance, missing_files = load_model_artifacts()
 
 # ---------- Sidebar ----------
@@ -107,7 +128,10 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
     try:
-        df_raw = pd.read_csv(uploaded_file)
+        df_raw = read_uploaded_csv(uploaded_file)
+    except PreprocessingError as e:
+        st.error(f"⚠️ {str(e)}")
+        st.stop()
     except Exception:
         st.error("⚠️ Couldn't read this file — please make sure it's a valid CSV.")
         st.stop()
@@ -117,12 +141,24 @@ if uploaded_file is not None:
             "This file appears to be empty. Please upload a CSV with transaction rows.")
         st.stop()
 
+    if len(df_raw) > 100_000:
+        st.warning(
+            f"⚠️ This file has {len(df_raw):,} rows — very large files may take a while to process. "
+            "Consider uploading a smaller batch for faster results."
+        )
+
     try:
         with st.spinner("🔎 Screening transactions for fraud patterns..."):
             df_processed = preprocess_transactions(df_raw, feature_columns)
             X_scaled = scaler.transform(df_processed)
             predictions = model.predict(X_scaled)
             probabilities = model.predict_proba(X_scaled)[:, 1]
+            # Keep a scaled-value dataframe (same index/columns as df_processed)
+            # for use in explanations — using scaled values here matches the
+            # units the model's coefficients were actually trained on, giving
+            # more accurate "why flagged" reasoning than using raw values would.
+            X_scaled_df = pd.DataFrame(
+                X_scaled, columns=feature_columns, index=df_processed.index)
     except PreprocessingError as e:
         st.error(f"⚠️ {str(e)}")
         st.stop()
@@ -159,7 +195,7 @@ if uploaded_file is not None:
     counts = [n_total - n_flagged, n_flagged]
     labels = ['Not Fraud', 'Fraud']
     colors = ['#02C39A', '#F96167']
-    bars = ax.barh(labels, counts, color=colors, height=0.55)
+    ax.barh(labels, counts, color=colors, height=0.55)
     ax.set_xlabel('Number of Transactions')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -167,6 +203,8 @@ if uploaded_file is not None:
         ax.text(v + max(counts) * 0.01, i, f'{v:,}', va='center', fontsize=10)
     plt.tight_layout()
     st.pyplot(fig)
+    # prevents figure accumulation across repeated uploads in one session
+    plt.close(fig)
 
     st.markdown("---")
 
@@ -179,9 +217,9 @@ if uploaded_file is not None:
     if len(top_suspicious) > 0:
         if feature_importance is not None:
             explanations = []
-            for idx, row in top_suspicious.iterrows():
+            for idx in top_suspicious.index:
                 explanations.append(explain_transaction(
-                    df_processed.loc[idx], feature_importance))
+                    X_scaled_df.loc[idx], feature_importance))
             top_suspicious['why_flagged'] = explanations
         else:
             top_suspicious['why_flagged'] = "Flagged by the model's overall risk score."
@@ -211,9 +249,17 @@ if uploaded_file is not None:
 
     # ---------- Full Results Table ----------
     st.subheader("📋 Full Results")
-    st.caption(
-        f"All {n_total:,} screened transactions, sortable by any column.")
-    st.dataframe(results, use_container_width=True, hide_index=True)
+    if n_total > MAX_DISPLAY_ROWS:
+        st.caption(
+            f"Showing the first {MAX_DISPLAY_ROWS:,} of {n_total:,} screened transactions "
+            "(large result sets are truncated for display performance)."
+        )
+        st.dataframe(results.head(MAX_DISPLAY_ROWS),
+                     use_container_width=True, hide_index=True)
+    else:
+        st.caption(
+            f"All {n_total:,} screened transactions, sortable by any column.")
+        st.dataframe(results, use_container_width=True, hide_index=True)
 
 else:
     st.markdown(

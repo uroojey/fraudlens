@@ -67,3 +67,29 @@ Top signal: `prev_address_months_count_is_missing` (the missing-value flag creat
 - **Reload test passed** — reloaded artifacts produce identical predictions to the original in-memory model, confirming no save/load mismatch
 
 **Ready for Day 6:** these three saved artifacts are exactly what the Streamlit app will load to make live predictions.
+
+---
+
+## Day 6 — Streamlit App Built & Verified
+
+Core Streamlit app (`app.py`) built and tested end-to-end locally:
+- File upload → `utils/preprocessing.py` (mirrors Day 3 cleaning exactly) → scaling → prediction → results display
+- Summary metrics, distribution chart, Top Suspicious Transactions with rule-based explanations (`utils/explain.py`), full results table
+- Footer added per today's requirement: "Built with Claude as part of the AB Talks 60-Day Claude AI Challenge."
+- Tested on a 200-row real sample: 31 flagged (15.5% flag rate) — consistent with the model's known aggressive-flagging behavior documented in Day 4/5 (high recall, low precision)
+- Explanations read as coherent, real fraud signals: transaction velocity (24h), zip code frequency (4w), proposed credit limit, credit risk score
+- One new artifact added: `models/imputation_values.json` (median values for missing-data imputation, computed from raw training data via `save_imputation_values.py`) — required so new uploads can be cleaned identically to training data
+
+**Scope note:** Day 6 and Day 7 (polish: charts, explanations, sidebar) were merged into one session per approval; deployment moves to tomorrow.
+
+---
+
+## Day 7 — Senior UX Polish & Deployment
+
+**UX polish pass:** custom CSS styling for metric cards, distinct loading/success/error/empty states, human-readable table column names, cleaner chart styling, sidebar "How it works" explainer. Footer requirement (from Day 6) reversed per explicit request — no attribution text on any page.
+
+**Deployed live:** `https://fraudlens404.streamlit.app` via Streamlit Community Cloud, connected directly to the GitHub repo (`main` branch, `app.py`). Free tier, no cost.
+
+**Bug found and fixed during deployment:** `models/feature_importance.csv` was silently excluded from every prior commit — a broad `*.csv` rule in `.gitignore` (meant only to exclude the large raw dataset files) was also blocking this small, necessary artifact. This caused the deployed app's explanation feature to silently fall back to a generic message instead of the specific, coherent reasons seen locally. Fixed by force-adding the file and narrowing the `.gitignore` rule to `data/*.csv` only.
+
+**Verified:** live app tested end-to-end in an incognito window (no local setup, no login) — upload, prediction, metrics, chart, and detailed explanations all working correctly on the public deployed version.
