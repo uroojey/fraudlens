@@ -1,27 +1,29 @@
-# FraudLens
+# 🔍 FraudLens
 
 A two-part fraud detection system: a **Streamlit web app** for transaction-level fraud screening, and a **Power BI report** for business-level fraud trend analysis — both powered by the same trained model and dataset.
 
 Built as a 10-day capstone project for the [#60DayClaudeChallenge](https://www.linkedin.com/) by [@ABTalksOnAI](https://linkedin.com/) and [@AnilBajpai](https://linkedin.com/).
 
-** Live app:** [fraudlens404.streamlit.app](https://fraudlens404.streamlit.app)
+**🔗 Live app:** [fraudlens404.streamlit.app](https://fraudlens404.streamlit.app)
 
 ---
 
-## Screenshots
+## 📸 Screenshots
+
 | Fraud Analyst View (Streamlit) | Risk Manager View (Power BI) |
 |---|---|
 | ![Streamlit app screenshot](screenshots/streamlit_demo.png) | ![Power BI report screenshot](screenshots/powerbi_dashboard.png) |
 
- [Watch the Power BI report demo](screenshots/powerbi_demo.mp4)
+🎥 [Watch the Power BI report demo](screenshots/powerbi_demo.mp4)
 
 ---
 
-## The Problem
+## 🎯 The Problem
 
 Financial institutions process massive transaction volumes daily, with fraud representing a tiny (~1%) but costly fraction. Manual review doesn't scale, and simple rule-based systems miss evolving patterns. Fraud analysts need fast, batch-level screening; risk managers need aggregated trend visibility. Most tools serve only one of these audiences — FraudLens serves both from one shared model.
 
-##  Features
+## ✨ Features
+
 **Streamlit App (Fraud Analyst View):**
 - Upload a CSV of transactions, get instant fraud predictions
 - Fraud probability score per transaction
@@ -35,7 +37,7 @@ Financial institutions process massive transaction volumes daily, with fraud rep
 - Fraud rate breakdown by payment type and employment status
 - Custom DAX measures
 
-## Tech Stack
+## 🛠 Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -48,7 +50,7 @@ Financial institutions process massive transaction volumes daily, with fraud rep
 
 **No backend server, no database, no authentication** — by design. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full architecture rationale.
 
-## Model Performance
+## 📊 Model Performance
 
 Final model: **Logistic Regression** (`class_weight='balanced'`), selected after comparison against Random Forest and Isolation Forest.
 
@@ -60,7 +62,7 @@ Final model: **Logistic Regression** (`class_weight='balanced'`), selected after
 
 Full model comparison and reasoning in [`model_notes.md`](model_notes.md).
 
-## Running Locally
+## 🚀 Running Locally
 
 ```bash
 git clone https://github.com/uroojey/fraudlens.git
@@ -78,24 +80,24 @@ Then open `http://localhost:8501` and upload a CSV from `sample_data/` to try it
 
 For the Power BI report: open `powerbi/FraudLens_Report.pbix` in Power BI Desktop (free, no account required to view/edit locally).
 
-## Project Structure
+## 📁 Project Structure
 
 See [`docs/PROJECT-STRUCTURE.md`](docs/PROJECT-STRUCTURE.md) for the full folder breakdown and rationale.
 
-## Documentation
+## 📖 Documentation
 
 - [Product Requirements Document](FraudLens_PRD.docx)
 - [Implementation Blueprint](FraudLens_Implementation_Blueprint.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Data Schema](docs/SCHEMA.md)
-- [API/Interface Design](docs/API.md)
-- [UI Wireframes](docs/UI-WIREFRAMES.md)
+- [Design Documentation](docs/DESIGN.md) — architecture, data schema, API design, UI wireframes, project structure
+- [Challenge Retrospective](docs/challenge-retrospective.md) — the full Day 1-10 build story
+- [Future Scope](docs/future-scope.md) — 3/6/12-month roadmap
+- [30-Day Growth Plan](docs/30-day-growth-plan.md)
 
-## Data Source & Credit
+## 🔒 Data Source & Credit
 
 [Bank Account Fraud Dataset (NeurIPS 2022)](https://www.kaggle.com/datasets/sgpjesus/bank-account-fraud-dataset-neurips-2022), created by **Feedzai**, "Base" variant. Used under its original license terms for educational/portfolio purposes.
 
-## Known Limitations (Intentional Scope, v1.0)
+## ⚠️ Known Limitations (Intentional Scope, v1.0)
 
 - No user accounts, authentication, or persistent storage
 - Batch CSV upload only — no real-time transaction streaming
