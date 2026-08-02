@@ -15,8 +15,7 @@ from utils.explain import load_feature_importance, explain_transaction
 
 # ---------- Page Config ----------
 st.set_page_config(
-    page_title="FraudLens — Fraud Detection",
-    page_icon=":mag:",
+    page_title="FraudLens [Fraud Detection]",
     layout="wide"
 )
 
